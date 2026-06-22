@@ -22,7 +22,7 @@ import {
   Send,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { SessionUser } from "@/lib/session";
 import { canOpenPath, initials, roleLabels } from "@/lib/roles";
@@ -32,14 +32,6 @@ import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -145,17 +137,31 @@ export function AppShell({ children, user }: { children: React.ReactNode; user?:
   const pathname = usePathname();
   const router = useRouter();
   const [search, setSearch] = useState("");
+  const [accountOpen, setAccountOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function closeMenu(event: MouseEvent) {
+      if (!accountMenuRef.current?.contains(event.target as Node)) setAccountOpen(false);
+    }
+    document.addEventListener("mousedown", closeMenu);
+    return () => document.removeEventListener("mousedown", closeMenu);
+  }, []);
 
   async function signOut() {
     try {
-      await fetch("/api/auth/logout", { method: "POST", cache: "no-store" });
+      setAccountOpen(false);
+      await fetch("/api/auth/logout", { method: "POST", cache: "no-store", credentials: "include" });
       window.localStorage.clear();
       window.sessionStorage.clear();
     } finally {
-      router.replace("/login?logout=1");
-      router.refresh();
-      window.location.assign("/login?logout=1");
+      window.location.replace("/login?logout=1");
     }
+  }
+
+  function goToAccountPath(path: string) {
+    setAccountOpen(false);
+    router.push(path);
   }
 
   return (
@@ -197,24 +203,56 @@ export function AppShell({ children, user }: { children: React.ReactNode; user?:
               <Bell />
               <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-red-500 ring-2 ring-background" />
             </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="ghost" className="h-10 gap-2 px-2" />}>
+            <div ref={accountMenuRef} className="relative">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-10 gap-2 px-2"
+                aria-haspopup="menu"
+                aria-expanded={accountOpen}
+                onClick={() => setAccountOpen((open) => !open)}
+              >
                 <Avatar className="size-7"><AvatarFallback className="bg-primary/10 text-[11px] text-primary">{initials(user?.name ?? "Demo User")}</AvatarFallback></Avatar>
                 <span className="hidden text-left sm:block">
                   <span className="block text-xs font-medium leading-none">{user?.name ?? "Demo User"}</span>
                   <span className="mt-1 block text-[10px] text-muted-foreground">{user?.role ? roleLabels[user.role] : "Demo Mode"}</span>
                 </span>
                 <ChevronDown className="hidden size-3.5 text-muted-foreground sm:block" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuLabel>My account</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => router.push("/settings?tab=profile")}>Profile</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push("/settings?tab=general")}>Preferences</DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={signOut}>Sign out</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              </Button>
+              {accountOpen ? (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-11 z-50 w-52 overflow-hidden rounded-xl border bg-popover p-1 text-popover-foreground shadow-xl ring-1 ring-foreground/10"
+                >
+                  <div className="px-3 py-2 text-xs font-medium text-muted-foreground">My account</div>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                    onClick={() => goToAccountPath("/settings?tab=profile")}
+                  >
+                    Profile
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                    onClick={() => goToAccountPath("/settings?tab=general")}
+                  >
+                    Preferences
+                  </button>
+                  <div className="my-1 h-px bg-border" />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm text-destructive hover:bg-destructive/10"
+                    onClick={signOut}
+                  >
+                    Sign out
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </header>
 

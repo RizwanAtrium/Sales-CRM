@@ -16,17 +16,21 @@ export function LoginForm() {
     event.preventDefault();
     setLoading(true);
     setError("");
+    window.localStorage.clear();
+    window.sessionStorage.clear();
     const form = new FormData(event.currentTarget);
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      credentials: "include",
       body: JSON.stringify({ email: form.get("email"), password: form.get("password") }),
     });
     const result = await response.json();
     setLoading(false);
     if (!response.ok) return setError(result.error ?? "Unable to sign in");
     router.refresh();
-    window.location.assign("/dashboard");
+    window.location.replace("/dashboard");
   }
 
   return (
