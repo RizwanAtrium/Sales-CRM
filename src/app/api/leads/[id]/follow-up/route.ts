@@ -9,10 +9,11 @@ import { FollowUp } from "@/models/follow-up";
 const followUpSchema = z.object({
   comment: z.string().min(1),
   nextReachBackDate: z.coerce.date().optional(),
-  outcome: z.enum(["CONTINUE", "CLOSED_WON", "CLOSED_LOST", "NOT_INTERESTED"]).default("CONTINUE"),
+  nextReachBackTimeZone: z.string().optional().default("America/New_York"),
+  outcome: z.enum(["CONNECTED", "NO_ANSWER", "VOICEMAIL", "RESCHEDULE", "CONTINUE", "CLOSED_WON", "CLOSED_LOST", "NOT_INTERESTED"]).default("CONNECTED"),
 }).superRefine((value, context) => {
-  if (value.outcome === "CONTINUE" && !value.nextReachBackDate) {
-    context.addIssue({ code: "custom", message: "A next reach-back date is required" });
+  if (["CONTINUE", "RESCHEDULE"].includes(value.outcome) && !value.nextReachBackDate) {
+    context.addIssue({ code: "custom", message: "A next callback date is required" });
   }
 });
 
@@ -29,14 +30,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (user.role === "AGENT" && String(lead.assignedAgent) !== user.sub) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const before = { reachBackDate: lead.reachBackDate, status: lead.status };
-    const terminal = input.outcome !== "CONTINUE";
+    const terminal = !["CONNECTED", "NO_ANSWER", "VOICEMAIL", "RESCHEDULE", "CONTINUE"].includes(input.outcome);
     lead.reachBackDate = input.nextReachBackDate ?? null;
+    lead.reachBackTimeZone = input.nextReachBackTimeZone;
     if (terminal) {
       lead.status = input.outcome;
       lead.terminalAt = new Date();
     }
     await lead.save();
-    const followUp = await FollowUp.create({ lead: lead.id, actor: user.sub, comment: input.comment, previousReachBackDate: before.reachBackDate, nextReachBackDate: input.nextReachBackDate ?? null, outcome: input.outcome });
+    const followUp = await FollowUp.create({ lead: lead.id, actor: user.sub, comment: input.comment, previousReachBackDate: before.reachBackDate, nextReachBackDate: input.nextReachBackDate ?? null, nextReachBackTimeZone: input.nextReachBackTimeZone, outcome: input.outcome, disposition: input.outcome });
     await recordAudit({ actorId: user.sub, actorName: user.name, action: "HANDLED_FOLLOW_UP", targetType: "LEAD", targetId: lead.id, before, after: { reachBackDate: lead.reachBackDate, status: lead.status } });
     return NextResponse.json({ item: followUp, lead });
   } catch (error) {

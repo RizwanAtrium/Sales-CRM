@@ -12,6 +12,7 @@ export type SessionUser = JWTPayload & {
 
 function getSecret() {
   const value = process.env.JWT_SECRET;
+  if (!value && process.env.NODE_ENV !== "production") return new TextEncoder().encode("local-development-secret-change-before-production");
   if (!value) throw new Error("JWT_SECRET is not configured");
   return new TextEncoder().encode(value);
 }

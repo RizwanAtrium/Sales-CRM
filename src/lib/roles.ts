@@ -31,7 +31,7 @@ export function initials(name: string) {
 
 export function canOpenPath(role: AppRole, pathname: string) {
   const normalized = pathname === "/" ? "/dashboard" : pathname;
-  const publicCrmPaths = ["/dashboard", "/notifications", "/settings"];
+  const publicCrmPaths = ["/dashboard", "/notifications", "/settings", "/chat"];
   if (publicCrmPaths.some((path) => normalized === path || normalized.startsWith(`${path}/`))) return true;
 
   if (role === "AGENT") {

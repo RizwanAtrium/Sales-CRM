@@ -9,7 +9,7 @@ const schema = z.object({ decision: z.enum(["APPROVED", "REJECTED"]), note: z.st
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!hasRole(user.role, "MANAGER")) return NextResponse.json({ error: "Manager access required" }, { status: 403 });
+  if (!hasRole(user.role, "SUPER_ADMIN")) return NextResponse.json({ error: "IT/admin removal access required" }, { status: 403 });
   const { id } = await params;
   try {
     const input = schema.parse(await request.json());

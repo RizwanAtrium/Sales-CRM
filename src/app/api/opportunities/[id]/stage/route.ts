@@ -5,12 +5,13 @@ import { requireActiveUser, hasRole } from "@/lib/require-user";
 import { recordAudit } from "@/lib/audit";
 import { canMoveOpportunityStage, opportunityVisibilityFilter } from "@/lib/pipeline-access";
 import { createClosedSaleNotifications } from "@/lib/notifications";
+import { postAppointmentStatus } from "@/lib/chat-service";
 import { Lead } from "@/models/lead";
 import { Opportunity } from "@/models/opportunity";
 import { User } from "@/models/user";
 
 const schema = z.object({
-  stage: z.enum(["APPROVED", "UNAPPROVED", "IN_PROGRESS", "CLOSED_WON", "CLOSED_LOST"]),
+  stage: z.enum(["IN_PROGRESS", "REJECTED", "REVERSED", "APPROVED", "APPROVED_WON", "APPROVED_LOST", "CLOSED_WON", "CLOSED_LOST"]),
   serviceLines: z.array(z.object({ serviceName: z.string().min(1), price: z.number().min(0) })).optional(),
   closerId: z.string().optional(),
 });
@@ -32,8 +33,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const visibility = await opportunityVisibilityFilter(user);
     const opportunity = await Opportunity.findOne({ _id: id, ...visibility }).populate("lead", "businessName customerName");
     if (!opportunity) return NextResponse.json({ error: "Opportunity not found" }, { status: 404 });
-    if (["APPROVED", "UNAPPROVED"].includes(input.stage) && !hasRole(user.role, "TEAM_LEAD")) return NextResponse.json({ error: "Team Lead access required" }, { status: 403 });
-    if (["CLOSED_WON", "CLOSED_LOST"].includes(input.stage) && !hasRole(user.role, "TEAM_LEAD")) return NextResponse.json({ error: "Closer or manager access required" }, { status: 403 });
+    if (["APPROVED", "REJECTED", "REVERSED"].includes(input.stage) && !hasRole(user.role, "TEAM_LEAD")) return NextResponse.json({ error: "Team Lead access required" }, { status: 403 });
+    if (["APPROVED_WON", "APPROVED_LOST", "CLOSED_WON", "CLOSED_LOST"].includes(input.stage) && !hasRole(user.role, "TEAM_LEAD")) return NextResponse.json({ error: "Closer or manager access required" }, { status: 403 });
     const before = opportunity.toObject();
     const now = new Date();
     const closerId = input.closerId && Types.ObjectId.isValid(input.closerId) ? input.closerId : input.stage === "CLOSED_WON" || input.stage === "CLOSED_LOST" ? user.sub : idString(opportunity.closer);
@@ -44,18 +45,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!opportunity.teamLeadSnapshot && closer?.teamLead) opportunity.teamLeadSnapshot = closer.teamLead;
     if (!opportunity.managerSnapshot && closer?.manager) opportunity.managerSnapshot = closer.manager;
     if (input.stage === "APPROVED") opportunity.dateApproved = opportunity.dateApproved ?? now;
-    if (input.stage === "CLOSED_WON") {
+    if (input.stage === "APPROVED_WON" || input.stage === "CLOSED_WON") {
       opportunity.dateClosedWon = opportunity.dateClosedWon ?? now;
       opportunity.serviceLines = input.serviceLines ?? opportunity.serviceLines;
       opportunity.totalDealValue = opportunity.serviceLines.reduce((sum: number, line: { price: number }) => sum + Number(line.price || 0), 0);
       opportunity.amountToReceive = Math.max(opportunity.totalDealValue - opportunity.amountReceived, 0);
       opportunity.paymentStatus = opportunity.amountReceived >= opportunity.totalDealValue && opportunity.totalDealValue > 0 ? "PAID_IN_FULL" : opportunity.amountReceived > 0 ? "PARTIAL" : "UNPAID";
     }
-    if (input.stage === "CLOSED_LOST") opportunity.dateClosedLost = opportunity.dateClosedLost ?? now;
+    if (input.stage === "APPROVED_LOST" || input.stage === "CLOSED_LOST") opportunity.dateClosedLost = opportunity.dateClosedLost ?? now;
     await opportunity.save();
-    await Lead.findByIdAndUpdate(opportunity.lead, { status: input.stage, terminalAt: ["CLOSED_WON", "CLOSED_LOST", "UNAPPROVED"].includes(input.stage) ? now : null });
-    if (input.stage === "CLOSED_WON") {
-      const lead = opportunity.lead as unknown as { businessName?: string; customerName?: string };
+    await Lead.findByIdAndUpdate(opportunity.lead, { status: input.stage, terminalAt: ["APPROVED_WON", "APPROVED_LOST", "CLOSED_WON", "CLOSED_LOST", "REJECTED", "REVERSED"].includes(input.stage) ? now : null });
+    const lead = opportunity.lead as unknown as { businessName?: string; customerName?: string };
+    await postAppointmentStatus({ senderId: user.sub, opportunityId: opportunity.id, businessName: lead.businessName ?? "Appointment", customerName: lead.customerName ?? "Customer", stage: input.stage });
+    if (input.stage === "APPROVED_WON" || input.stage === "CLOSED_WON") {
       await createClosedSaleNotifications({
         opportunityId: opportunity.id,
         businessName: lead.businessName ?? "Closed sale",

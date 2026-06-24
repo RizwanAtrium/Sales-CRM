@@ -9,7 +9,8 @@ export async function requireActiveUser() {
   if (!session?.sub || !Types.ObjectId.isValid(session.sub)) return null;
   await connectToDatabase();
   const user = await User.findOne({ _id: session.sub, active: true }).lean();
-  return user ? session : null;
+  if (!user || user.frozen) return null;
+  return session;
 }
 
 export function hasRole(role: string, minimum: "AGENT" | "TEAM_LEAD" | "MANAGER" | "SUPER_ADMIN") {

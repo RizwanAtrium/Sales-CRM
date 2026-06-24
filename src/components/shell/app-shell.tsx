@@ -20,6 +20,7 @@ import {
   Waypoints,
   ClipboardCheck,
   Send,
+  MessageSquareText,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -40,6 +41,7 @@ const nav = [
   { href: "/pipeline", label: "Pipeline", icon: Waypoints },
   { href: "/payments", label: "Payments", icon: CircleDollarSign },
   { href: "/call-stats", label: "Call stats", icon: Activity },
+  { href: "/chat", label: "Chat", icon: MessageSquareText },
   { href: "/team", label: "Team", icon: Target },
   { href: "/approvals", label: "Approvals", icon: ClipboardCheck },
   { href: "/handoffs", label: "CST handoffs", icon: Send },
@@ -138,6 +140,7 @@ export function AppShell({ children, user }: { children: React.ReactNode; user?:
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [accountOpen, setAccountOpen] = useState(false);
+  const [chatToast, setChatToast] = useState<{ name: string; body: string } | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -151,11 +154,17 @@ export function AppShell({ children, user }: { children: React.ReactNode; user?:
   async function signOut() {
     try {
       setAccountOpen(false);
-      await fetch("/api/auth/logout", { method: "POST", cache: "no-store", credentials: "include" });
+      const reason = window.prompt("Logout reason: Break, Shift End, or Other", "Shift End") || "";
+      const response = await fetch("/api/auth/logout", { method: "POST", cache: "no-store", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }) });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        alert(result.error || "Logout blocked");
+        return;
+      }
       window.localStorage.clear();
       window.sessionStorage.clear();
     } finally {
-      window.location.replace("/login?logout=1");
+      if (!document.cookie.includes("tfd_crm_session")) window.location.replace("/login?logout=1");
     }
   }
 
@@ -166,6 +175,17 @@ export function AppShell({ children, user }: { children: React.ReactNode; user?:
 
   return (
     <div className="min-h-screen bg-background">
+      {chatToast ? (
+        <button
+          type="button"
+          onClick={() => router.push("/chat")}
+          className="fixed left-1/2 top-4 z-[70] flex w-[min(92vw,360px)] -translate-x-1/2 animate-in slide-in-from-top-5 fade-in items-center gap-3 rounded-2xl border bg-card/95 p-3 text-left shadow-2xl backdrop-blur"
+        >
+          <Avatar className="size-9"><AvatarFallback className="bg-primary/15 text-primary">{initials(chatToast.name)}</AvatarFallback></Avatar>
+          <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{chatToast.name}</span><span className="block truncate text-xs text-muted-foreground">{chatToast.body}</span></span>
+          <MessageSquareText className="size-4 text-primary" />
+        </button>
+      ) : null}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r bg-sidebar/90 backdrop-blur-xl lg:block">
         <Sidebar pathname={pathname} user={user} />
       </aside>

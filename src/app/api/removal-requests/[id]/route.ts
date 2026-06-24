@@ -12,7 +12,7 @@ const decisionSchema = z.object({ decision: z.enum(["APPROVED", "REJECTED"]) });
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!hasRole(user.role, "MANAGER")) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!hasRole(user.role, "SUPER_ADMIN")) return NextResponse.json({ error: "IT/admin removal access required" }, { status: 403 });
   const { id } = await params;
   if (!Types.ObjectId.isValid(id)) return NextResponse.json({ error: "Invalid request ID" }, { status: 400 });
   try {

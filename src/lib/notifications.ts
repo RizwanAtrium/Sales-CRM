@@ -84,6 +84,9 @@ export async function createMissedReachBackNotifications() {
         }),
       ),
     );
+    if (assignedId) {
+      await User.findByIdAndUpdate(assignedId, { frozen: true, frozenAt: now, frozenReason: "Missed scheduled callback", availabilityStatus: "FROZEN" });
+    }
     created += recipientIds.size;
     await Lead.updateOne({ _id: lead._id }, { $set: { lastReachBackNotificationAt: now } });
   }

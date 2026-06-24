@@ -1,5 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE } from "@/lib/session";
+import { requireActiveUser } from "@/lib/require-user";
+import { etDateString } from "@/lib/et-time";
+import { AttendanceLog } from "@/models/attendance-log";
+import { Lead } from "@/models/lead";
+import { User } from "@/models/user";
 
 function clearSessionCookie(response: NextResponse) {
   response.cookies.set(SESSION_COOKIE, "", {
@@ -16,7 +21,20 @@ function clearSessionCookie(response: NextResponse) {
   return response;
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const user = await requireActiveUser();
+  if (!user) return clearSessionCookie(NextResponse.json({ ok: true }));
+  const body = await request.json().catch(() => ({}));
+  const reason = ["Break", "Shift End", "Other"].includes(body.reason) ? body.reason : "";
+  if (!reason) return NextResponse.json({ error: "Logout reason required" }, { status: 400 });
+
+  if (user.role === "AGENT") {
+    const pending = await Lead.countDocuments({ assignedAgent: user.sub, reachBackDate: { $lte: new Date() }, status: { $nin: ["CLOSED_WON", "CLOSED_LOST", "APPROVED_WON", "APPROVED_LOST", "NOT_INTERESTED", "ARCHIVED"] } });
+    if (pending) return NextResponse.json({ error: `Complete ${pending} due callbacks before logout`, pendingCallbacks: pending }, { status: 409 });
+  }
+
+  await AttendanceLog.create({ user: user.sub, type: "LOGOUT", at: new Date(), etDate: etDateString(), reason });
+  await User.findByIdAndUpdate(user.sub, { availabilityStatus: reason === "Break" ? "BREAK" : "OFFLINE" });
   return clearSessionCookie(NextResponse.json({ ok: true }));
 }
 

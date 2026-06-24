@@ -41,7 +41,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const input = schema.parse(await request.json());
     const opportunity = await Opportunity.findById(id);
     if (!opportunity) return NextResponse.json({ error: "Opportunity not found" }, { status: 404 });
-    if (opportunity.stage !== "CLOSED_WON" && opportunity.stage !== "FORWARDED_TO_CST") return NextResponse.json({ error: "Payments are allowed only after Closed-Won" }, { status: 400 });
+    if (!["APPROVED_WON", "CLOSED_WON", "FORWARDED_TO_CST"].includes(opportunity.stage)) return NextResponse.json({ error: "Payments are allowed only after Approved-Won" }, { status: 400 });
 
     const agentId = isObjectId(input.agentId) ? input.agentId : user.sub;
     const closerId = isObjectId(input.closerId) ? input.closerId : user.sub;

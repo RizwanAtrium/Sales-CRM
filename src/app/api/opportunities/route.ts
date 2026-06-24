@@ -7,6 +7,7 @@ import { opportunityVisibilityFilter } from "@/lib/pipeline-access";
 import { Lead } from "@/models/lead";
 import { Opportunity } from "@/models/opportunity";
 import { User } from "@/models/user";
+import { postAppointmentSubmitted } from "@/lib/chat-service";
 
 const submitSchema = z.object({ leadId: z.string(), closerId: z.string().optional() });
 
@@ -58,6 +59,7 @@ export async function POST(request: Request) {
     lead.status = "SUBMITTED";
     await lead.save();
     await recordAudit({ actorId: user.sub, actorName: user.name, action: "SUBMITTED_APPOINTMENT", targetType: "OPPORTUNITY", targetId: opportunity.id, after: { leadId: lead.id } });
+    await postAppointmentSubmitted({ senderId: user.sub, opportunityId: opportunity.id, businessName: lead.businessName, customerName: lead.customerName });
     return NextResponse.json({ item: opportunity }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: "Submission validation failed", issues: error.issues }, { status: 400 });

@@ -19,12 +19,14 @@ const leadSchema = new Schema(
     mobileNumber: { type: String, trim: true, default: "" },
     email: { type: String, trim: true, lowercase: true, default: "" },
     businessAddress: { type: String, trim: true, default: "" },
-    niche: { type: String, trim: true, default: "" },
+    niche: { type: String, trim: true, required: true },
+    price: { type: Number, min: 0, default: null },
     notes: { type: String, trim: true, default: "" },
+    privateNotesByAgent: { type: Schema.Types.Mixed, default: {} },
     reachBackDate: {
       type: Date,
       required: function (this: { status: string }) {
-        return !["CLOSED_WON", "CLOSED_LOST", "NOT_INTERESTED", "ARCHIVED"].includes(this.status);
+        return !["APPROVED_WON", "APPROVED_LOST", "CLOSED_WON", "CLOSED_LOST", "NOT_INTERESTED", "ARCHIVED"].includes(this.status);
       },
       default: null,
       index: true,
@@ -32,10 +34,11 @@ const leadSchema = new Schema(
     reachBackTimeZone: { type: String, default: "America/New_York", trim: true },
     lastReachBackNotificationAt: { type: Date, default: null },
     assignedAgent: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    assignedTeamLead: { type: Schema.Types.ObjectId, ref: "User", default: null, index: true },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
     status: {
       type: String,
-      enum: ["ACTIVE", "SUBMITTED", "APPROVED", "UNAPPROVED", "IN_PROGRESS", "CLOSED_WON", "CLOSED_LOST", "NOT_INTERESTED", "ARCHIVED"],
+      enum: ["ACTIVE", "SUBMITTED", "APPROVED", "REJECTED", "REVERSED", "IN_PROGRESS", "APPROVED_WON", "APPROVED_LOST", "CLOSED_WON", "CLOSED_LOST", "NOT_INTERESTED", "ARCHIVED"],
       default: "ACTIVE",
       index: true,
     },

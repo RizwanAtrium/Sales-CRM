@@ -4,7 +4,10 @@ import { z } from "zod";
 import { connectToDatabase } from "@/lib/mongodb";
 import { createSessionToken, SESSION_COOKIE } from "@/lib/session";
 import { recordAudit } from "@/lib/audit";
+import { etDateString, loginPunctuality } from "@/lib/et-time";
+import { AttendanceLog } from "@/models/attendance-log";
 import { User } from "@/models/user";
+import { createNotification } from "@/lib/notifications";
 
 const loginSchema = z.object({
   email: z.string().email().transform((value) => value.toLowerCase()),
@@ -14,6 +17,9 @@ const loginSchema = z.object({
 export async function POST(request: Request) {
   try {
     const input = loginSchema.parse(await request.json());
+    if (!process.env.MONGODB_URI) {
+      return NextResponse.json({ error: "MongoDB not configured" }, { status: 500 });
+    }
     await connectToDatabase();
     const user = await User.findOne({ email: input.email, active: true }).select("+passwordHash");
     if (!user || !(await compare(input.password, user.passwordHash))) {
@@ -26,8 +32,24 @@ export async function POST(request: Request) {
       email: user.email,
       role: user.role,
     });
-    user.lastLoginAt = new Date();
+    const now = new Date();
+    const status = loginPunctuality(now, user.shiftStart);
+    user.lastLoginAt = now;
+    user.availabilityStatus = user.frozen ? "FROZEN" : "AVAILABLE";
+    if (status === "LATE") user.lateLoginCount = (user.lateLoginCount || 0) + 1;
     await user.save();
+    await AttendanceLog.create({ user: user.id, type: "LOGIN", at: now, etDate: etDateString(now), shiftStart: user.shiftStart, shiftEnd: user.shiftEnd, status });
+    if (status === "LATE" || status === "EARLY") {
+      const recipients = [user.teamLead, user.manager].filter(Boolean).map(String);
+      await Promise.all(recipients.map((recipientId) => createNotification({
+        recipientId,
+        title: `${user.name} logged in ${status.toLowerCase().replace("_", " ")}`,
+        detail: `${user.name} logged in at ${now.toLocaleString("en-US", { timeZone: "America/New_York" })} ET against shift start ${user.shiftStart}.`,
+        href: `/team/${user.id}`,
+        type: "Security",
+        dedupeKey: `attendance:${user.id}:${status}:${etDateString(now)}`,
+      })));
+    }
     await recordAudit({ actorId: user.id, actorName: user.name, action: "LOGIN", targetType: "USER", targetId: user.id });
 
     const response = NextResponse.json({ user: { id: user.id, name: user.name, email: user.email, role: user.role } });

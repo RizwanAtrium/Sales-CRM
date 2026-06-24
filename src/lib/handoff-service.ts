@@ -36,7 +36,7 @@ export async function createOrDeliverCstHandoff({ opportunityId, actor, cstManag
     .populate("teamLeadSnapshot managerSnapshot", "name email");
 
   if (!opportunity) throw new Error("Opportunity not found");
-  if (opportunity.stage !== "CLOSED_WON" && opportunity.stage !== "FORWARDED_TO_CST") throw new Error("Only Closed-Won opportunities can be handed off");
+  if (!["APPROVED_WON", "CLOSED_WON", "FORWARDED_TO_CST"].includes(opportunity.stage)) throw new Error("Only Approved-Won opportunities can be handed off");
   if (opportunity.paymentStatus !== "PAID_IN_FULL") throw new Error("CST handoff requires Paid in Full");
 
   const lead = opportunity.lead as unknown as Record<string, string>;

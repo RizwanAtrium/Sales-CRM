@@ -11,18 +11,18 @@ import { connectToDatabase } from "@/lib/mongodb";
 import { requireActiveUser } from "@/lib/require-user";
 import { opportunityVisibilityFilter, rolePipelineStages } from "@/lib/pipeline-access";
 import { roleLabels } from "@/lib/roles";
-import { opportunities as demoOpportunities } from "@/lib/demo-data";
 import { Opportunity } from "@/models/opportunity";
 
 export const metadata = { title: "Pipeline" };
 
 const stageConfig: Record<string, { name: string; dot: string }> = {
   SUBMITTED: { name: "Submitted", dot: "bg-sky-500" },
-  APPROVED: { name: "Approved", dot: "bg-indigo-500" },
-  UNAPPROVED: { name: "Rejected / Reversed", dot: "bg-rose-500" },
   IN_PROGRESS: { name: "In Progress", dot: "bg-amber-500" },
-  CLOSED_WON: { name: "Closed Won", dot: "bg-emerald-500" },
-  CLOSED_LOST: { name: "Closed Lost", dot: "bg-neutral-500" },
+  REJECTED: { name: "Rejected", dot: "bg-rose-500" },
+  REVERSED: { name: "Reversed", dot: "bg-orange-500" },
+  APPROVED: { name: "Approved", dot: "bg-indigo-500" },
+  APPROVED_WON: { name: "Approved-Won", dot: "bg-emerald-500" },
+  APPROVED_LOST: { name: "Approved-Lost", dot: "bg-neutral-500" },
 };
 
 type Search = { view?: string; mine?: string };
@@ -44,7 +44,7 @@ function ageLabel(date?: Date | string | null) {
 
 async function loadOpportunities(search: Search) {
   const user = await requireActiveUser();
-  if (!user) return demoOpportunities.map((item) => ({ ...item, closer: item.owner, manager: "Sales Manager", rawStage: item.stage.toUpperCase().replaceAll(" ", "_") }));
+  if (!user) throw new Error("Authentication required");
   const filter = await opportunityVisibilityFilter(user);
   const records = await Opportunity.find(filter)
     .sort({ dateSubmitted: -1 })
@@ -52,7 +52,7 @@ async function loadOpportunities(search: Search) {
     .populate("setter closer teamLeadSnapshot managerSnapshot", "name role")
     .lean();
 
-  if (!records.length) return demoOpportunities.map((item) => ({ ...item, closer: item.owner, manager: "Sales Manager", rawStage: item.stage.toUpperCase().replaceAll(" ", "_") }));
+  if (!records.length) return [];
   const items = records.map((item) => {
     const lead = item.lead as unknown as { businessName?: string; customerName?: string };
     const stage = String(item.stage);
@@ -78,7 +78,7 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
   await connectToDatabase().catch(() => null);
   const user = await requireActiveUser();
   const visible = await loadOpportunities(query);
-  const stageKeys = rolePipelineStages(user?.role ?? "SUPER_ADMIN").filter((stage) => stageConfig[stage]);
+  const stageKeys = rolePipelineStages(user.role).filter((stage) => stageConfig[stage]);
   const total = visible.reduce((sum, item) => sum + Number(item.value.replace(/[$,]/g, "") || 0), 0);
 
   return (

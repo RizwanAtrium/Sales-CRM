@@ -8,10 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 export const metadata = { title: "Sign in" };
 
 export default async function LoginPage() {
-  if (process.env.CRM_DEMO_MODE !== "true") {
-    const user = await getSessionUser();
-    if (user) redirect("/dashboard");
-  }
+  const user = await getSessionUser();
+  if (user) redirect("/dashboard");
   return (
     <main className="relative grid min-h-screen overflow-hidden lg:grid-cols-[1.1fr_0.9fr]">
       <section className="relative hidden overflow-hidden border-r bg-primary p-12 text-primary-foreground lg:flex lg:flex-col lg:justify-between">

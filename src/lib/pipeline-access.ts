@@ -2,12 +2,13 @@ import { Types } from "mongoose";
 import { User } from "@/models/user";
 import type { SessionUser } from "@/lib/session";
 
-export const agentPipelineStages = ["SUBMITTED", "IN_PROGRESS", "UNAPPROVED", "APPROVED"] as const;
-export const closerPipelineStages = ["SUBMITTED", "IN_PROGRESS", "UNAPPROVED", "APPROVED", "CLOSER_IN_PROGRESS", "CLOSED_WON", "CLOSED_LOST"] as const;
+export const agentPipelineStages = ["SUBMITTED", "IN_PROGRESS", "REJECTED", "REVERSED", "APPROVED"] as const;
+export const closerPipelineStages = ["SUBMITTED", "IN_PROGRESS", "REJECTED", "REVERSED", "APPROVED", "APPROVED_WON", "APPROVED_LOST"] as const;
 
 export function normalizePipelineStage(stage: string) {
   const value = stage.toUpperCase().replaceAll(" ", "_").replaceAll("-", "_");
-  if (value === "REJECTED" || value === "REVERSED") return "UNAPPROVED";
+  if (value === "CLOSED_WON") return "APPROVED_WON";
+  if (value === "CLOSED_LOST") return "APPROVED_LOST";
   return value === "CLOSER_IN_PROGRESS" ? "IN_PROGRESS" : value;
 }
 
@@ -38,8 +39,8 @@ export async function opportunityVisibilityFilter(user: SessionUser) {
 }
 
 export function canMoveOpportunityStage(role: SessionUser["role"], nextStage: string) {
-  if (role === "AGENT") return ["SUBMITTED", "IN_PROGRESS", "UNAPPROVED", "APPROVED"].includes(nextStage);
-  if (role === "TEAM_LEAD") return ["IN_PROGRESS", "APPROVED", "UNAPPROVED", "CLOSED_WON", "CLOSED_LOST"].includes(nextStage);
-  if (role === "MANAGER") return ["IN_PROGRESS", "APPROVED", "UNAPPROVED", "CLOSED_WON", "CLOSED_LOST", "FORWARDED_TO_CST"].includes(nextStage);
+  if (role === "AGENT") return false;
+  if (role === "TEAM_LEAD") return ["IN_PROGRESS", "APPROVED", "REJECTED", "REVERSED", "APPROVED_WON", "APPROVED_LOST"].includes(nextStage);
+  if (role === "MANAGER") return ["IN_PROGRESS", "APPROVED", "REJECTED", "REVERSED", "APPROVED_WON", "APPROVED_LOST", "FORWARDED_TO_CST"].includes(nextStage);
   return true;
 }

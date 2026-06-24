@@ -19,9 +19,9 @@ export async function GET(request: NextRequest) {
     Lead.countDocuments({ ...dueFilter, reachBackDate: { $lt: new Date(new Date().setHours(0, 0, 0, 0)) }, status: { $nin: ["CLOSED_WON", "CLOSED_LOST", "NOT_INTERESTED", "ARCHIVED"] } }),
     Opportunity.countDocuments({ dateSubmitted: { $gte: from, $lte: to } }),
     Opportunity.countDocuments({ dateApproved: { $gte: from, $lte: to } }),
-    Opportunity.countDocuments({ dateClosedWon: { $gte: from, $lte: to } }),
-    Opportunity.countDocuments({ dateClosedLost: { $gte: from, $lte: to } }),
-    Payment.aggregate([{ $match: { receivedAt: { $gte: from, $lte: to }, voidedAt: null } }, { $group: { _id: null, total: { $sum: "$amount" } } }]),
+    Opportunity.countDocuments({ stage: { $in: ["APPROVED_WON", "CLOSED_WON"] }, dateClosedWon: { $gte: from, $lte: to } }),
+    Opportunity.countDocuments({ stage: { $in: ["APPROVED_LOST", "CLOSED_LOST"] }, dateClosedLost: { $gte: from, $lte: to } }),
+    Opportunity.aggregate([{ $match: { stage: { $in: ["APPROVED_WON", "CLOSED_WON"] }, dateClosedWon: { $gte: from, $lte: to } } }, { $group: { _id: null, total: { $sum: "$totalDealValue" } } }]),
     DailyCallStat.aggregate([{ $match: { ...statFilter, date: { $gte: from, $lte: to }, offDay: false } }, { $group: { _id: null, callsMade: { $sum: "$callsMade" }, connected: { $sum: "$connected" } } }]),
   ]);
   const callsMade = stats[0]?.callsMade ?? 0;

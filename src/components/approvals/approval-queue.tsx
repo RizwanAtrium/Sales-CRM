@@ -30,9 +30,9 @@ export function ApprovalQueue() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  async function decide(item: QueueItem, decision: "APPROVED" | "UNAPPROVED" | "REJECTED") {
+  async function decide(item: QueueItem, decision: "APPROVED" | "REJECTED") {
     const response = item.type === "Appointment"
-      ? await fetch(`/api/opportunities/${item.id}/stage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage: decision === "APPROVED" ? "APPROVED" : "UNAPPROVED" }) })
+      ? await fetch(`/api/opportunities/${item.id}/stage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage: decision === "APPROVED" ? "APPROVED" : "REJECTED" }) })
       : await fetch(`/api/removal-requests/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decision: decision === "APPROVED" ? "APPROVED" : "REJECTED" }) });
     const result = await response.json();
     if (!response.ok) return toast.error(result.error || "Decision failed");
@@ -42,5 +42,5 @@ export function ApprovalQueue() {
   }
 
   const groups = [["Appointment approvals", "Team Lead review", appointments], ["Removal approvals", "Manager / Super Admin review", removals]] as const;
-  return <div className="grid gap-4 lg:grid-cols-2">{groups.map(([title, description, items]) => <Card key={title} className="bg-card/90"><CardHeader><CardTitle>{title}</CardTitle><CardDescription>{description}</CardDescription></CardHeader><CardContent className="space-y-3">{items.map((item) => <div key={item.id} className="rounded-xl border p-4"><div className="flex items-start justify-between"><div><p className="font-medium">{item.business}</p><p className="mt-1 text-xs text-muted-foreground">{item.id} · requested by {item.owner} · {item.age}</p></div><Badge variant="secondary">{item.type}</Badge></div><div className="mt-4 flex justify-end gap-2"><Button variant="destructive" onClick={() => decide(item, item.type === "Appointment" ? "UNAPPROVED" : "REJECTED")}><X /> Reject</Button><Button onClick={() => decide(item, "APPROVED")}><Check /> Approve</Button></div></div>)}{items.length === 0 ? <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">Queue cleared</div> : null}</CardContent></Card>)}</div>;
+  return <div className="grid gap-4 lg:grid-cols-2">{groups.map(([title, description, items]) => <Card key={title} className="bg-card/90"><CardHeader><CardTitle>{title}</CardTitle><CardDescription>{description}</CardDescription></CardHeader><CardContent className="space-y-3">{items.map((item) => <div key={item.id} className="rounded-xl border p-4"><div className="flex items-start justify-between"><div><p className="font-medium">{item.business}</p><p className="mt-1 text-xs text-muted-foreground">{item.id} · requested by {item.owner} · {item.age}</p></div><Badge variant="secondary">{item.type}</Badge></div><div className="mt-4 flex justify-end gap-2"><Button variant="destructive" onClick={() => decide(item, "REJECTED")}><X /> Reject</Button><Button onClick={() => decide(item, "APPROVED")}><Check /> Approve</Button></div></div>)}{items.length === 0 ? <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">Queue cleared</div> : null}</CardContent></Card>)}</div>;
 }

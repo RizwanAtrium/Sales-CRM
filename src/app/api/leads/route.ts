@@ -13,11 +13,13 @@ const createLeadSchema = z.object({
   mobileNumber: z.string().optional().default(""),
   email: z.union([z.string().email(), z.literal("")]).optional().default(""),
   businessAddress: z.string().optional().default(""),
-  niche: z.string().optional().default(""),
+  niche: z.string().min(1),
+  price: z.coerce.number().min(0).optional().nullable(),
   notes: z.string().optional().default(""),
   reachBackDate: z.coerce.date(),
   reachBackTimeZone: z.string().optional().default("America/New_York"),
   assignedAgent: z.string().optional(),
+  assignedTeamLead: z.string().optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -54,14 +56,27 @@ export async function POST(request: Request) {
   try {
     const input = createLeadSchema.parse(await request.json());
     const assignedAgent = user.role === "AGENT" ? user.sub : input.assignedAgent ?? user.sub;
+    const assignedTeamLead = input.assignedTeamLead === "SELF" ? undefined : input.assignedTeamLead;
     await connectToDatabase();
     const lead = await Lead.create({
       ...input,
       assignedAgent,
+      assignedTeamLead,
       createdBy: user.sub,
       ownershipHistory: [{ previousOwner: null, newOwner: assignedAgent, changedBy: user.sub, changedAt: new Date() }],
     });
     await recordAudit({ actorId: user.sub, actorName: user.name, action: "CREATED_LEAD", targetType: "LEAD", targetId: lead.id, after: input });
+    const { postLeadCreated } = await import("@/lib/chat-service");
+    await postLeadCreated({
+      senderId: user.sub,
+      leadId: lead.id,
+      customerName: input.customerName,
+      businessName: input.businessName,
+      service: input.niche || input.leadSource,
+      value: input.price != null ? `$${Number(input.price).toLocaleString()}` : "TBD",
+      status: lead.status,
+      assignedAgentId: assignedAgent,
+    });
     return NextResponse.json({ item: lead }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) return NextResponse.json({ error: "Lead validation failed", issues: error.issues }, { status: 400 });
