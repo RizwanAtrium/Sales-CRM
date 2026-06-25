@@ -14,7 +14,7 @@ type UserOption = { _id?: string; id?: string; name: string; email: string; role
 export function NewTeamMemberForm() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
-  const [role, setRole] = useState<"AGENT" | "TEAM_LEAD">("AGENT");
+  const [role, setRole] = useState<"AGENT" | "TEAM_LEAD" | "MANAGER" | "SUPER_ADMIN">("AGENT");
   const [users, setUsers] = useState<UserOption[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
 
@@ -49,6 +49,10 @@ export function NewTeamMemberForm() {
     const payload = Object.fromEntries(form.entries()) as Record<string, FormDataEntryValue>;
     if (role === "AGENT" && !payload.teamLead) delete payload.teamLead;
     if (role === "TEAM_LEAD" && !payload.manager) delete payload.manager;
+    if (role === "MANAGER" || role === "SUPER_ADMIN") {
+      delete payload.teamLead;
+      delete payload.manager;
+    }
 
     try {
       const response = await fetch("/api/users", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -80,9 +84,11 @@ export function NewTeamMemberForm() {
           <div className="space-y-2"><Label htmlFor="memberEmail">Work email</Label><Input id="memberEmail" name="email" type="email" required /></div>
           <div className="space-y-2">
             <Label htmlFor="memberRole">Role</Label>
-            <select id="memberRole" name="role" value={role} onChange={(event) => setRole(event.target.value as "AGENT" | "TEAM_LEAD")} className="h-9 w-full rounded-lg border bg-background px-3 text-sm">
+            <select id="memberRole" name="role" value={role} onChange={(event) => setRole(event.target.value as "AGENT" | "TEAM_LEAD" | "MANAGER" | "SUPER_ADMIN")} className="h-9 w-full rounded-lg border bg-background px-3 text-sm">
               <option value="AGENT">Agent</option>
               <option value="TEAM_LEAD">Team Lead</option>
+              <option value="MANAGER">Manager</option>
+              <option value="SUPER_ADMIN">Super Admin</option>
             </select>
           </div>
           <div className="space-y-2"><Label htmlFor="memberPassword">Temporary password</Label><Input id="memberPassword" name="password" type="password" minLength={8} required /></div>
@@ -94,7 +100,7 @@ export function NewTeamMemberForm() {
                 {teamLeads.map((user) => <option value={user._id ?? user.id} key={user._id ?? user.id}>{user.name} · {user.email}</option>)}
               </select>
             </div>
-          ) : (
+          ) : role === "TEAM_LEAD" ? (
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="memberManager">Manager *</Label>
               <select id="memberManager" name="manager" required className="h-9 w-full rounded-lg border bg-background px-3 text-sm" disabled={loadingUsers}>
@@ -102,7 +108,7 @@ export function NewTeamMemberForm() {
                 {managers.map((user) => <option value={user._id ?? user.id} key={user._id ?? user.id}>{user.name} · {user.email}</option>)}
               </select>
             </div>
-          )}
+          ) : null}
           <div className="sm:col-span-2 flex justify-end"><Button type="submit" size="lg" disabled={saving}><UserPlus />{saving ? "Creating..." : "Create user"}</Button></div>
         </CardContent>
       </Card>

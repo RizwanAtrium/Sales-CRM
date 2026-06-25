@@ -16,10 +16,6 @@ type NotificationItem = {
   read: boolean;
 };
 
-const fallback: NotificationItem[] = [
-  { _id: "demo-1", title: "Follow-up monitoring is active", detail: "Missed reach-backs notify the owner, team lead, manager, and super admin.", href: "/follow-ups?filter=overdue", type: "Follow-up", read: false },
-];
-
 export function NotificationCenter() {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,7 +25,7 @@ export function NotificationCenter() {
     fetch("/api/notifications", { cache: "no-store" })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to load notifications")))
       .then((data) => { if (mounted) setItems(data.items ?? []); })
-      .catch(() => { if (mounted) setItems(fallback); })
+      .catch(() => { if (mounted) setItems([]); })
       .finally(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, []);

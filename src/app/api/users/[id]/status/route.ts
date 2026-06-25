@@ -16,6 +16,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!hasRole(user.role, "TEAM_LEAD")) return NextResponse.json({ error: "Team Lead access required" }, { status: 403 });
   const { id } = await params;
   const input = schema.parse(await request.json());
+  if ((input.shiftStart || input.shiftEnd) && user.role !== "SUPER_ADMIN") return NextResponse.json({ error: "Super Admin configures shifts" }, { status: 403 });
   const update: Record<string, unknown> = { ...input };
   if (input.frozen === false) Object.assign(update, { frozenAt: null, frozenReason: "", availabilityStatus: "AVAILABLE" });
   if (input.frozen === true) Object.assign(update, { frozenAt: new Date(), availabilityStatus: "FROZEN" });

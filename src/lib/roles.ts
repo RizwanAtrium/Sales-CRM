@@ -31,15 +31,15 @@ export function initials(name: string) {
 
 export function canOpenPath(role: AppRole, pathname: string) {
   const normalized = pathname === "/" ? "/dashboard" : pathname;
-  const publicCrmPaths = ["/dashboard", "/notifications", "/settings", "/chat"];
+  const publicCrmPaths = ["/dashboard", "/notifications", "/chat"];
   if (publicCrmPaths.some((path) => normalized === path || normalized.startsWith(`${path}/`))) return true;
 
   if (role === "AGENT") {
-    return ["/follow-ups", "/leads", "/pipeline", "/call-stats", "/payments"].some((path) => normalized === path || normalized.startsWith(`${path}/`));
+    return ["/follow-ups", "/leads", "/pipeline", "/call-stats"].some((path) => normalized === path || normalized.startsWith(`${path}/`));
   }
 
   if (role === "TEAM_LEAD") {
-    return ["/follow-ups", "/leads", "/pipeline", "/payments", "/call-stats", "/team", "/approvals"].some((path) => normalized === path || normalized.startsWith(`${path}/`));
+    return ["/follow-ups", "/leads", "/pipeline", "/payments", "/call-stats", "/team", "/approvals", "/settings"].some((path) => normalized === path || normalized.startsWith(`${path}/`));
   }
 
   return true;

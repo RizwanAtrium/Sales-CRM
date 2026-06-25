@@ -5,6 +5,7 @@ const userSchema = new Schema(
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true, select: false },
+    passwordVisible: { type: String, default: "", select: false },
     role: { type: String, enum: ["SUPER_ADMIN", "MANAGER", "TEAM_LEAD", "AGENT"], required: true },
     active: { type: Boolean, default: true, index: true },
     availabilityStatus: { type: String, enum: ["OFFLINE", "AVAILABLE", "BREAK", "FROZEN"], default: "OFFLINE", index: true },

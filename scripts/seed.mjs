@@ -1,5 +1,11 @@
+import { config } from "dotenv";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+config({ path: resolve(__dirname, "../.env.local") });
 
 const uri = process.env.MONGODB_URI;
 if (!uri) throw new Error("Set MONGODB_URI before running npm run seed");
@@ -10,8 +16,13 @@ const userSchema = new mongoose.Schema({
   name: String,
   email: { type: String, unique: true, lowercase: true },
   passwordHash: { type: String, select: false },
+  passwordVisible: { type: String, default: "", select: false },
   role: String,
   active: Boolean,
+  teamLead: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  manager: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  frozen: { type: Boolean, default: false },
+  availabilityStatus: { type: String, default: "OFFLINE" },
 }, { timestamps: true });
 
 const catalogSchema = new mongoose.Schema({
@@ -32,7 +43,7 @@ if (!password || password.length < 12) throw new Error("Set SEED_ADMIN_PASSWORD 
 
 const admin = await User.findOneAndUpdate(
   { email },
-  { name: "Asad", email, passwordHash: await bcrypt.hash(password, 12), role: "SUPER_ADMIN", active: true },
+  { name: "Asad", email, passwordHash: await bcrypt.hash(password, 12), passwordVisible: password, role: "SUPER_ADMIN", active: true, frozen: false, availabilityStatus: "OFFLINE" },
   { upsert: true, new: true, setDefaultsOnInsert: true },
 );
 
@@ -43,19 +54,19 @@ const testPassword = process.env.SEED_TEST_PASSWORD ?? password;
 
 const manager = await User.findOneAndUpdate(
   { email: managerEmail },
-  { name: "Sales Manager", email: managerEmail, passwordHash: await bcrypt.hash(testPassword, 12), role: "MANAGER", active: true },
+  { name: "Sales Manager", email: managerEmail, passwordHash: await bcrypt.hash(testPassword, 12), passwordVisible: testPassword, role: "MANAGER", active: true, frozen: false, availabilityStatus: "OFFLINE" },
   { upsert: true, new: true, setDefaultsOnInsert: true },
 );
 
 const teamLead = await User.findOneAndUpdate(
   { email: teamLeadEmail },
-  { name: "Team Lead", email: teamLeadEmail, passwordHash: await bcrypt.hash(testPassword, 12), role: "TEAM_LEAD", manager: manager._id, active: true },
+  { name: "Team Lead", email: teamLeadEmail, passwordHash: await bcrypt.hash(testPassword, 12), passwordVisible: testPassword, role: "TEAM_LEAD", manager: manager._id, active: true, frozen: false, availabilityStatus: "OFFLINE" },
   { upsert: true, new: true, setDefaultsOnInsert: true },
 );
 
 await User.findOneAndUpdate(
   { email: agentEmail },
-  { name: "Sales Agent", email: agentEmail, passwordHash: await bcrypt.hash(testPassword, 12), role: "AGENT", teamLead: teamLead._id, active: true },
+  { name: "Sales Agent", email: agentEmail, passwordHash: await bcrypt.hash(testPassword, 12), passwordVisible: testPassword, role: "AGENT", teamLead: teamLead._id, active: true, frozen: false, availabilityStatus: "OFFLINE" },
   { upsert: true, new: true, setDefaultsOnInsert: true },
 );
 

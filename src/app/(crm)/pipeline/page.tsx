@@ -44,7 +44,7 @@ function ageLabel(date?: Date | string | null) {
 
 async function loadOpportunities(search: Search) {
   const user = await requireActiveUser();
-  if (!user) throw new Error("Authentication required");
+  if (!user) return [];
   const filter = await opportunityVisibilityFilter(user);
   const records = await Opportunity.find(filter)
     .sort({ dateSubmitted: -1 })
@@ -78,7 +78,7 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
   await connectToDatabase().catch(() => null);
   const user = await requireActiveUser();
   const visible = await loadOpportunities(query);
-  const stageKeys = rolePipelineStages(user.role).filter((stage) => stageConfig[stage]);
+  const stageKeys = rolePipelineStages(user?.role ?? "SUPER_ADMIN").filter((stage) => stageConfig[stage]);
   const total = visible.reduce((sum, item) => sum + Number(item.value.replace(/[$,]/g, "") || 0), 0);
 
   return (

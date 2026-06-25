@@ -11,14 +11,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 
-type OpportunityData = { id: string; business: string; contact: string; value: string; owner: string; age: string; stage: string };
+type ServiceLine = { serviceName: string; price: number };
+type OpportunityData = { id: string; business: string; contact: string; value: string; owner: string; age: string; stage: string; amountReceived?: number; serviceLines?: ServiceLine[] };
 
 const services = ["Website", "Google Business Profile (GMB)", "SEO", "Community Management", "Ads Management", "AI Content Creation"];
 
 export function OpportunityDetail({ initialOpportunity }: { initialOpportunity: OpportunityData }) {
   const [opportunity, setOpportunity] = useState(initialOpportunity);
-  const [paymentReceived, setPaymentReceived] = useState(opportunity.stage === "Approved Won" ? 12400 : 0);
-  const dealValue = Number(opportunity.value.replace(/[$,]/g, "")) || 12400;
+  const [paymentReceived, setPaymentReceived] = useState(initialOpportunity.amountReceived ?? 0);
+  const [serviceLines, setServiceLines] = useState<ServiceLine[]>(initialOpportunity.serviceLines?.length ? initialOpportunity.serviceLines : [{ serviceName: "Website", price: 0 }]);
+  const dealValue = Number(opportunity.value.replace(/[$,]/g, "")) || serviceLines.reduce((sum, line) => sum + Number(line.price || 0), 0);
   const paid = paymentReceived >= dealValue;
 
   async function changeStage(stage: string, extra?: Record<string, unknown>) {
@@ -30,12 +32,24 @@ export function OpportunityDetail({ initialOpportunity }: { initialOpportunity: 
     toast.success(`Opportunity moved to ${stage}`);
   }
 
+  async function savePricing() {
+    const cleanLines = serviceLines.filter((line) => line.serviceName.trim() && Number(line.price) >= 0);
+    if (!cleanLines.length || cleanLines.every((line) => Number(line.price) === 0)) return toast.error("Enter at least one priced service");
+    const response = await fetch(`/api/opportunities/${opportunity.id}/stage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ serviceLines: cleanLines }) });
+    const result = await response.json();
+    if (!response.ok) return toast.error(result.error || "Pricing update failed");
+    const total = cleanLines.reduce((sum, line) => sum + Number(line.price || 0), 0);
+    setOpportunity((current) => ({ ...current, value: `$${total.toLocaleString()}` }));
+    setServiceLines(cleanLines);
+    toast.success("Pricing saved");
+  }
+
   async function addPayment(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const amount = Number(new FormData(event.currentTarget).get("amount"));
     if (!amount || amount <= 0) return toast.error("Enter a valid payment");
     if (/^[0-9a-f]{24}$/i.test(opportunity.id)) {
-      const response = await fetch(`/api/opportunities/${opportunity.id}/payments`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amount }) });
+      const response = await fetch(`/api/opportunities/${opportunity.id}/payments`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amount, serviceLines }) });
       if (!response.ok) return toast.error((await response.json()).error || "Payment failed");
     }
     setPaymentReceived((current) => Math.min(current + amount, dealValue));
@@ -57,9 +71,10 @@ export function OpportunityDetail({ initialOpportunity }: { initialOpportunity: 
   return (
     <>
       <div className="flex flex-wrap gap-2">
-        {opportunity.stage === "Submitted" ? <><Button onClick={() => changeStage("Approved")}><CheckCircle2 /> Approve</Button><Button variant="destructive" onClick={() => changeStage("Unapproved")}><ThumbsDown /> Reject</Button></> : null}
+        {opportunity.stage === "Submitted" ? <><Button onClick={() => changeStage("Approved")}><CheckCircle2 /> Approve</Button><Button variant="destructive" onClick={() => changeStage("Rejected")}><ThumbsDown /> Reject</Button></> : null}
         {opportunity.stage === "Approved" ? <Button onClick={() => changeStage("In Progress")}><UserRoundCheck /> Start closing</Button> : null}
-        {opportunity.stage === "In Progress" ? <><Dialog><DialogTrigger render={<Button />}><CheckCircle2 /> Approved-Won</DialogTrigger><DialogContent><DialogHeader><DialogTitle>Mark as Approved-Won</DialogTitle><DialogDescription>Select all sold services/add-ons and record each service price. This keeps the agreed package ready for Sales Manager → CST Manager handoff.</DialogDescription></DialogHeader><div className="space-y-3">{services.slice(0, 4).map((service, index) => <label key={service} className="grid grid-cols-[auto_1fr_120px] items-center gap-3 rounded-xl border p-3"><input type="checkbox" defaultChecked={index < 2} /><span className="text-sm">{service}</span><Input type="number" defaultValue={index === 0 ? 2500 : index === 1 ? 750 : 0} /></label>)}</div><DialogFooter><Button onClick={() => changeStage("Approved Won", { serviceLines: [{ serviceName: "Website", price: 2500 }, { serviceName: "SEO", price: 2000 }] })}>Confirm Approved-Won</Button></DialogFooter></DialogContent></Dialog><Button variant="destructive" onClick={() => changeStage("Approved Lost")}><ThumbsDown /> Approved-Lost</Button></> : null}
+        <Dialog><DialogTrigger render={<Button variant="outline" />}><CircleDollarSign /> Pricing</DialogTrigger><DialogContent><DialogHeader><DialogTitle>Deal pricing</DialogTitle><DialogDescription>Capture amount before close. Revenue still counts only after Approved-Won.</DialogDescription></DialogHeader><div className="space-y-3">{serviceLines.map((line, index) => <div key={index} className="grid grid-cols-[1fr_120px] gap-3"><Input value={line.serviceName} onChange={(event) => setServiceLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, serviceName: event.target.value } : item))} list="service-options" placeholder="Service" /><Input type="number" value={line.price} onChange={(event) => setServiceLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, price: Number(event.target.value) } : item))} min="0" /></div>)}<datalist id="service-options">{services.map((service) => <option key={service} value={service} />)}</datalist><Button type="button" variant="outline" onClick={() => setServiceLines((current) => [...current, { serviceName: "", price: 0 }])}>Add service</Button></div><DialogFooter><Button onClick={savePricing}>Save pricing</Button></DialogFooter></DialogContent></Dialog>
+        {opportunity.stage === "In Progress" ? <><Dialog><DialogTrigger render={<Button />}><CheckCircle2 /> Approved-Won</DialogTrigger><DialogContent><DialogHeader><DialogTitle>Mark as Approved-Won</DialogTitle><DialogDescription>Select all sold services/add-ons and record each service price.</DialogDescription></DialogHeader><div className="space-y-3">{serviceLines.map((line, index) => <label key={index} className="grid grid-cols-[1fr_120px] items-center gap-3 rounded-xl border p-3"><Input value={line.serviceName} onChange={(event) => setServiceLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, serviceName: event.target.value } : item))} /><Input type="number" value={line.price} onChange={(event) => setServiceLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, price: Number(event.target.value) } : item))} /></label>)}</div><DialogFooter><Button onClick={() => changeStage("Approved Won", { serviceLines })}>Confirm Approved-Won</Button></DialogFooter></DialogContent></Dialog><Button variant="destructive" onClick={() => changeStage("Approved Lost")}><ThumbsDown /> Approved-Lost</Button></> : null}
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">

@@ -3,6 +3,9 @@ import { z } from "zod";
 import { requireActiveUser, hasRole } from "@/lib/require-user";
 import { recordAudit } from "@/lib/audit";
 import { RemovalRequest } from "@/models/removal-request";
+import { Lead } from "@/models/lead";
+import { Opportunity } from "@/models/opportunity";
+import { User } from "@/models/user";
 
 const schema = z.object({ decision: z.enum(["APPROVED", "REJECTED"]), note: z.string().optional().default("") });
 
@@ -15,6 +18,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const input = schema.parse(await request.json());
     const item = await RemovalRequest.findByIdAndUpdate(id, { status: input.decision, approver: user.sub, decidedAt: new Date(), decisionNote: input.note }, { new: true });
     if (!item) return NextResponse.json({ error: "Request not found" }, { status: 404 });
+    if (input.decision === "APPROVED") {
+      if (item.targetType === "LEAD") await Lead.findByIdAndUpdate(item.targetId, { status: "ARCHIVED", terminalAt: new Date() });
+      if (item.targetType === "DEAL") await Opportunity.findByIdAndUpdate(item.targetId, { stage: "ARCHIVED" });
+      if (item.targetType === "USER") await User.findByIdAndUpdate(item.targetId, { active: false, deactivatedAt: new Date(), availabilityStatus: "OFFLINE" });
+    }
     await recordAudit({ actorId: user.sub, actorName: user.name, action: `REMOVAL_${input.decision}`, targetType: "REMOVAL_REQUEST", targetId: id, after: input });
     return NextResponse.json({ item });
   } catch (error) {

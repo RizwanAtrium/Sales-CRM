@@ -26,7 +26,7 @@ const opportunitySchema = new Schema(
     closer: { type: Schema.Types.ObjectId, ref: "User", default: null },
     teamLeadSnapshot: { type: Schema.Types.ObjectId, ref: "User", default: null },
     managerSnapshot: { type: Schema.Types.ObjectId, ref: "User", default: null },
-    stage: { type: String, enum: ["SUBMITTED", "IN_PROGRESS", "REJECTED", "REVERSED", "APPROVED", "APPROVED_WON", "APPROVED_LOST", "UNAPPROVED", "CLOSED_WON", "CLOSED_LOST", "FORWARDED_TO_CST"], default: "SUBMITTED", index: true },
+    stage: { type: String, enum: ["SUBMITTED", "IN_PROGRESS", "REJECTED", "REVERSED", "APPROVED", "APPROVED_WON", "APPROVED_LOST", "UNAPPROVED", "CLOSED_WON", "CLOSED_LOST", "FORWARDED_TO_CST", "ARCHIVED"], default: "SUBMITTED", index: true },
     dateSubmitted: { type: Date, required: true, default: Date.now },
     dateApproved: { type: Date, default: null },
     dateClosedWon: { type: Date, default: null },

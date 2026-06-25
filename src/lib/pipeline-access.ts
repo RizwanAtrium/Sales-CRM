@@ -4,6 +4,8 @@ import type { SessionUser } from "@/lib/session";
 
 export const agentPipelineStages = ["SUBMITTED", "IN_PROGRESS", "REJECTED", "REVERSED", "APPROVED"] as const;
 export const closerPipelineStages = ["SUBMITTED", "IN_PROGRESS", "REJECTED", "REVERSED", "APPROVED", "APPROVED_WON", "APPROVED_LOST"] as const;
+export const inactiveLeadStatuses = ["CLOSED_WON", "CLOSED_LOST", "APPROVED_WON", "APPROVED_LOST", "NOT_INTERESTED", "ARCHIVED"] as const;
+export const activeLeadFilter = { status: { $nin: [...inactiveLeadStatuses] } };
 
 export function normalizePipelineStage(stage: string) {
   const value = stage.toUpperCase().replaceAll(" ", "_").replaceAll("-", "_");
@@ -12,7 +14,8 @@ export function normalizePipelineStage(stage: string) {
   return value === "CLOSER_IN_PROGRESS" ? "IN_PROGRESS" : value;
 }
 
-export function rolePipelineStages(role: SessionUser["role"]) {
+export function rolePipelineStages(role: SessionUser["role"] | undefined | null) {
+  if (!role) return [...closerPipelineStages];
   return role === "AGENT" ? [...agentPipelineStages] : [...closerPipelineStages];
 }
 
@@ -30,6 +33,28 @@ export async function ownedUserIdsFor(user: SessionUser) {
   const teamLeadIds = directReports.filter((person) => person.role === "TEAM_LEAD").map((person) => person._id);
   const agents = teamLeadIds.length ? await User.find({ active: true, teamLead: { $in: teamLeadIds } }).select("_id").lean<{ _id: Types.ObjectId }[]>() : [];
   return [ownId, ...directReports.map((person) => person._id), ...agents.map((agent) => agent._id)];
+}
+
+export async function visibleUserIdsFor(user: SessionUser) {
+  return ownedUserIdsFor(user);
+}
+
+export async function userVisibilityFilter(user: SessionUser) {
+  const ids = await visibleUserIdsFor(user);
+  if (!ids) return {};
+  return { _id: { $in: ids } };
+}
+
+export async function leadVisibilityFilter(user: SessionUser) {
+  const ids = await visibleUserIdsFor(user);
+  if (!ids) return {};
+  return {
+    $or: [
+      { assignedAgent: { $in: ids } },
+      { assignedTeamLead: { $in: ids } },
+      { createdBy: { $in: ids } },
+    ],
+  };
 }
 
 export async function opportunityVisibilityFilter(user: SessionUser) {

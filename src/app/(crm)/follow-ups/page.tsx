@@ -2,11 +2,12 @@ import Link from "next/link";
 import { CalendarClock, CheckCircle2, Clock3, MessageSquareText, Phone, Search } from "lucide-react";
 import { AnimatedPage } from "@/components/motion/animated-page";
 import { PageHeader } from "@/components/page-header";
-import { followUps } from "@/lib/demo-data";
 import { connectToDatabase } from "@/lib/mongodb";
 import { requireActiveUser } from "@/lib/require-user";
 import { createMissedReachBackNotifications } from "@/lib/notifications";
 import { timeZoneLabel } from "@/lib/us-timezones";
+import { activeLeadFilter, leadVisibilityFilter } from "@/lib/pipeline-access";
+import { etDayRange } from "@/lib/et-time";
 import { Lead } from "@/models/lead";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -37,33 +38,29 @@ function getStatus(date?: Date | string | null) {
   if (!date) return "Upcoming" as const;
   const value = new Date(date);
   const now = new Date();
+  const today = etDayRange(now);
   if (value.getTime() < now.getTime()) return "Overdue" as const;
-  if (value.toDateString() === now.toDateString()) return "Due today" as const;
+  if (value >= today.start && value <= today.end) return "Due today" as const;
   return "Upcoming" as const;
 }
 
 async function loadQueue(): Promise<QueueItem[]> {
   const user = await requireActiveUser();
   if (!user) return [];
-  try {
-    await connectToDatabase();
-    await createMissedReachBackNotifications();
-    const filter: Record<string, unknown> = { status: { $nin: ["CLOSED_WON", "CLOSED_LOST", "NOT_INTERESTED", "ARCHIVED"] } };
-    if (user.role === "AGENT") filter.assignedAgent = user.sub;
-    const rows = await Lead.find(filter).sort({ reachBackDate: 1 }).limit(100).populate("assignedAgent", "name").lean();
-    return rows.map((lead) => ({
-      id: String(lead._id),
-      business: String(lead.businessName),
-      customer: String(lead.customerName),
-      source: String(lead.leadSource),
-      status: getStatus(lead.reachBackDate as Date | null),
-      due: formatReachBack(lead.reachBackDate as Date | null, lead.reachBackTimeZone as string | null),
-      agent: (lead.assignedAgent as { name?: string })?.name ?? "Unassigned",
-      phone: String(lead.phoneNumber ?? ""),
-    }));
-  } catch {
-    return [...followUps, ...followUps.map((item, index) => ({ ...item, id: `${item.id}-${index}`, business: `${item.business} Group`, due: index % 2 ? "Tomorrow" : "2 days ago" }))] as QueueItem[];
-  }
+  await connectToDatabase();
+  await createMissedReachBackNotifications();
+  const filter: Record<string, unknown> = { ...(await leadVisibilityFilter(user)), ...activeLeadFilter };
+  const rows = await Lead.find(filter).sort({ reachBackDate: 1 }).limit(100).populate("assignedAgent", "name").lean();
+  return rows.map((lead) => ({
+    id: String(lead._id),
+    business: String(lead.businessName),
+    customer: String(lead.customerName),
+    source: String(lead.leadSource),
+    status: getStatus(lead.reachBackDate as Date | null),
+    due: formatReachBack(lead.reachBackDate as Date | null, lead.reachBackTimeZone as string | null),
+    agent: (lead.assignedAgent as { name?: string })?.name ?? "Unassigned",
+    phone: String(lead.phoneNumber ?? ""),
+  }));
 }
 
 export default async function FollowUpsPage({ searchParams }: { searchParams: Promise<{ filter?: string; search?: string }> }) {
@@ -97,7 +94,7 @@ export default async function FollowUpsPage({ searchParams }: { searchParams: Pr
           </div>
           <div className="grid gap-3">
             {visibleQueue.map((item, index) => {
-              const leadId = item.id.split("-").slice(0, 2).join("-");
+              const leadId = item.id;
               return (
                 <div key={`${item.id}-${index}`} className="group flex flex-col gap-4 rounded-xl border bg-background/55 p-4 transition-all hover:border-primary/30 hover:shadow-sm lg:flex-row lg:items-center">
                   <Avatar className="size-10"><AvatarFallback className="bg-primary/10 text-xs text-primary">{item.customer.split(" ").map((name) => name[0]).join("")}</AvatarFallback></Avatar>

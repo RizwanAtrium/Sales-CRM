@@ -11,19 +11,18 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { usTimeZones } from "@/lib/us-timezones";
 
-const sources = ["GMB", "Yelp", "Meta Ads Library"];
-
 export function NewLeadForm() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [ready, setReady] = useState(false);
   const [teamLeads, setTeamLeads] = useState<Array<{ _id?: string; id?: string; name: string; email?: string }>>([]);
+  const [sources, setSources] = useState<string[]>(["GMB", "Yelp", "Meta Ads Library"]);
 
   useEffect(() => {
-    fetch("/api/users", { cache: "no-store" })
-      .then((response) => response.ok ? response.json() : Promise.reject())
-      .then((data) => setTeamLeads((data.items ?? []).filter((user: { role: string; active?: boolean }) => user.role === "TEAM_LEAD" && user.active !== false)))
-      .catch(() => setTeamLeads([]));
+    Promise.all([
+      fetch("/api/users", { cache: "no-store" }).then((r) => r.ok ? r.json() : Promise.reject()).then((data) => setTeamLeads((data.items ?? []).filter((u: { role: string; active?: boolean }) => u.role === "TEAM_LEAD" && u.active !== false))).catch(() => {}),
+      fetch("/api/catalog?type=LEAD_SOURCE", { cache: "no-store" }).then((r) => r.ok ? r.json() : Promise.reject()).then((data) => { if (data.items?.length) setSources(data.items.map((i: { name: string }) => i.name)); }).catch(() => {}),
+    ]);
   }, []);
 
   function checkReady(event: React.FormEvent<HTMLFormElement>) {
@@ -40,6 +39,7 @@ export function NewLeadForm() {
       const response = await fetch("/api/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(payload),
       });
       const result = await response.json();
@@ -48,11 +48,7 @@ export function NewLeadForm() {
         router.push(`/leads/${result.item._id}`);
         return;
       }
-      if (response.status !== 401) throw new Error(result.error || "Unable to create lead");
-      const id = `LD-${Date.now().toString().slice(-5)}`;
-      localStorage.setItem(`sales-crm-lead-${id}`, JSON.stringify({ ...payload, id, stage: "New" }));
-      toast.success("Lead saved in review workspace");
-      router.push(`/leads/${id}`);
+      throw new Error(result.error || (result.issues ? result.issues.map((i: { message: string }) => i.message).join("; ") : "Unable to create lead"));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to create lead");
     } finally {

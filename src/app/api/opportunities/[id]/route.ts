@@ -4,13 +4,15 @@ import { requireActiveUser } from "@/lib/require-user";
 import { Opportunity } from "@/models/opportunity";
 import { Payment } from "@/models/payment";
 import { Handoff } from "@/models/handoff";
+import { opportunityVisibilityFilter } from "@/lib/pipeline-access";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await requireActiveUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
   if (!Types.ObjectId.isValid(id)) return NextResponse.json({ error: "Invalid opportunity ID" }, { status: 400 });
-  const item = await Opportunity.findById(id)
+  const visibility = await opportunityVisibilityFilter(user);
+  const item = await Opportunity.findOne({ _id: id, ...visibility })
     .populate("lead")
     .populate("setter closer teamLeadSnapshot managerSnapshot", "name email role")
     .lean();

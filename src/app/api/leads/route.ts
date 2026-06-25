@@ -4,6 +4,8 @@ import { connectToDatabase } from "@/lib/mongodb";
 import { requireActiveUser } from "@/lib/require-user";
 import { recordAudit } from "@/lib/audit";
 import { Lead } from "@/models/lead";
+import { User } from "@/models/user";
+import { activeLeadFilter, leadVisibilityFilter } from "@/lib/pipeline-access";
 
 const createLeadSchema = z.object({
   leadSource: z.string().min(1),
@@ -30,14 +32,12 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(Math.max(Number(request.nextUrl.searchParams.get("limit") ?? 25), 1), 100);
   const search = request.nextUrl.searchParams.get("search")?.trim();
   const queue = request.nextUrl.searchParams.get("queue");
-  const filter: Record<string, unknown> = {};
-
-  if (user.role === "AGENT") filter.assignedAgent = user.sub;
+  const filter: Record<string, unknown> = await leadVisibilityFilter(user);
   if (queue === "due") {
     const { createMissedReachBackNotifications } = await import("@/lib/notifications");
     await createMissedReachBackNotifications();
     filter.reachBackDate = { $lte: new Date() };
-    filter.status = { $nin: ["CLOSED_WON", "CLOSED_LOST", "NOT_INTERESTED", "ARCHIVED"] };
+    Object.assign(filter, activeLeadFilter);
   }
   if (search) filter.$text = { $search: search };
 
@@ -56,8 +56,9 @@ export async function POST(request: Request) {
   try {
     const input = createLeadSchema.parse(await request.json());
     const assignedAgent = user.role === "AGENT" ? user.sub : input.assignedAgent ?? user.sub;
-    const assignedTeamLead = input.assignedTeamLead === "SELF" ? undefined : input.assignedTeamLead;
     await connectToDatabase();
+    const owner = await User.findById(assignedAgent).select("teamLead role").lean<{ teamLead?: unknown; role?: string }>();
+    const assignedTeamLead = input.assignedTeamLead === "SELF" ? owner?.teamLead ?? (owner?.role === "TEAM_LEAD" ? assignedAgent : undefined) : input.assignedTeamLead;
     const lead = await Lead.create({
       ...input,
       assignedAgent,

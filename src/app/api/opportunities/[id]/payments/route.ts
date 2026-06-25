@@ -5,6 +5,7 @@ import { requireActiveUser } from "@/lib/require-user";
 import { recordAudit } from "@/lib/audit";
 import { createOrDeliverCstHandoff } from "@/lib/handoff-service";
 import { createClosedSaleNotifications } from "@/lib/notifications";
+import { opportunityVisibilityFilter } from "@/lib/pipeline-access";
 import { Lead } from "@/models/lead";
 import { Opportunity } from "@/models/opportunity";
 import { Payment } from "@/models/payment";
@@ -19,18 +20,25 @@ const schema = z.object({
   amount: z.coerce.number().positive(),
   receivedAt: z.coerce.date().optional(),
   note: z.string().optional().default(""),
-  businessName: z.string().trim().min(1),
-  customerName: z.string().trim().min(1),
-  phoneNumber: z.string().trim().min(1),
-  mobileNumber: z.string().trim().min(1),
-  email: z.string().trim().email().transform((value) => value.toLowerCase()),
+  businessName: z.string().trim().optional(),
+  customerName: z.string().trim().optional(),
+  phoneNumber: z.string().trim().optional(),
+  mobileNumber: z.string().trim().optional(),
+  email: z.string().trim().optional(),
   agentId: z.string().optional(),
   closerId: z.string().optional(),
-  serviceLines: z.array(serviceLineSchema).min(1),
+  serviceLines: z.array(serviceLineSchema).optional(),
 });
 
 function isObjectId(value?: string | null) {
   return Boolean(value && Types.ObjectId.isValid(value));
+}
+
+function idString(value: unknown) {
+  if (!value) return null;
+  if (value instanceof Types.ObjectId) return value.toString();
+  if (typeof value === "object" && value !== null && "_id" in value) return String((value as { _id: unknown })._id);
+  return String(value);
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -39,16 +47,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const { id } = await params;
   try {
     const input = schema.parse(await request.json());
-    const opportunity = await Opportunity.findById(id);
+    if (user.role === "AGENT") return NextResponse.json({ error: "Agents cannot record payments or pricing" }, { status: 403 });
+    const visibility = await opportunityVisibilityFilter(user);
+    const opportunity = await Opportunity.findOne({ _id: id, ...visibility }).populate("lead", "businessName customerName phoneNumber mobileNumber email");
     if (!opportunity) return NextResponse.json({ error: "Opportunity not found" }, { status: 404 });
     if (!["APPROVED_WON", "CLOSED_WON", "FORWARDED_TO_CST"].includes(opportunity.stage)) return NextResponse.json({ error: "Payments are allowed only after Approved-Won" }, { status: 400 });
 
-    const agentId = isObjectId(input.agentId) ? input.agentId : user.sub;
-    const closerId = isObjectId(input.closerId) ? input.closerId : user.sub;
-
-    if (user.role === "AGENT" && (agentId !== user.sub || closerId !== user.sub)) {
-      return NextResponse.json({ error: "Agents can only record their own sale and closer details" }, { status: 403 });
-    }
+    const agentId = isObjectId(input.agentId) ? input.agentId : String(opportunity.setter || user.sub);
+    const closerId = isObjectId(input.closerId) ? input.closerId : String(opportunity.closer || user.sub);
 
     const [agent, closer] = await Promise.all([
       User.findOne({ _id: agentId, active: true }).select("_id name role teamLead manager").lean(),
@@ -57,8 +63,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!agent) return NextResponse.json({ error: "Selected agent is not active" }, { status: 400 });
     if (!closer) return NextResponse.json({ error: "Selected closer is not active" }, { status: 400 });
 
-    const totalSoldAmount = input.serviceLines.reduce((sum, line) => sum + Number(line.price || 0), 0);
+    const serviceLines = (input.serviceLines?.length ? input.serviceLines : opportunity.serviceLines) as { serviceName: string; price: number }[];
+    const totalSoldAmount = serviceLines.reduce((sum: number, line) => sum + Number(line.price || 0), 0);
     if (totalSoldAmount <= 0) return NextResponse.json({ error: "At least one service must have a price greater than zero" }, { status: 400 });
+    const lead = opportunity.lead as unknown as { businessName?: string; customerName?: string; phoneNumber?: string; mobileNumber?: string; email?: string } | null;
+    const businessName = input.businessName || lead?.businessName || "Client";
+    const customerName = input.customerName || lead?.customerName || "Customer";
+    const phoneNumber = input.phoneNumber || lead?.phoneNumber || "N/A";
+    const mobileNumber = input.mobileNumber || lead?.mobileNumber || phoneNumber;
+    const email = (input.email || lead?.email || "client@example.com").toLowerCase();
 
     const payment = await Payment.create({
       opportunity: id,
@@ -69,22 +82,23 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       agent: agentId,
       closer: closerId,
       customerSnapshot: {
-        businessName: input.businessName,
-        customerName: input.customerName,
-        phoneNumber: input.phoneNumber,
-        mobileNumber: input.mobileNumber,
-        email: input.email,
+        businessName,
+        customerName,
+        phoneNumber,
+        mobileNumber,
+        email,
       },
-      serviceLines: input.serviceLines,
+      serviceLines,
       totalSoldAmount,
     });
 
-    await Lead.findByIdAndUpdate(opportunity.lead, {
-      businessName: input.businessName,
-      customerName: input.customerName,
-      phoneNumber: input.phoneNumber,
-      mobileNumber: input.mobileNumber,
-      email: input.email,
+    const leadId = idString(opportunity.lead);
+    if (leadId) await Lead.findByIdAndUpdate(leadId, {
+      businessName,
+      customerName,
+      phoneNumber,
+      mobileNumber,
+      email,
       assignedAgent: agentId,
       status: opportunity.stage,
     });
@@ -93,7 +107,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     opportunity.closer = closerId;
     opportunity.teamLeadSnapshot = agent.teamLead ?? opportunity.teamLeadSnapshot ?? null;
     opportunity.managerSnapshot = agent.manager ?? opportunity.managerSnapshot ?? null;
-    opportunity.serviceLines = input.serviceLines;
+    opportunity.serviceLines = serviceLines;
     opportunity.totalDealValue = totalSoldAmount;
     opportunity.amountReceived = Number(opportunity.amountReceived || 0) + input.amount;
     opportunity.amountToReceive = Math.max(totalSoldAmount - opportunity.amountReceived, 0);
@@ -114,8 +128,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         paymentStatus: opportunity.paymentStatus,
         agentId,
         closerId,
-        customer: input.businessName,
-        services: input.serviceLines,
+        customer: businessName,
+        services: serviceLines,
       },
     });
 
@@ -123,8 +137,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (opportunity.paymentStatus === "PAID_IN_FULL") {
       await createClosedSaleNotifications({
         opportunityId: id,
-        businessName: input.businessName,
-        customerName: input.customerName,
+        businessName,
+        customerName,
         closerName: closer.name,
         closerId,
         teamLeadId: String(agent.teamLead ?? "") || null,

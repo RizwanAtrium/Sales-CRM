@@ -36,7 +36,7 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/follow-ups", label: "Follow-ups", icon: PhoneCall, badge: "38" },
+  { href: "/follow-ups", label: "Follow-ups", icon: PhoneCall },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/pipeline", label: "Pipeline", icon: Waypoints },
   { href: "/payments", label: "Payments", icon: CircleDollarSign },
@@ -92,11 +92,6 @@ function NavSection({ title, items, pathname }: { title: string; items: typeof n
             >
               <Icon className="size-4" />
               <span className="flex-1">{item.label}</span>
-              {"badge" in item && item.badge ? (
-                <span className={cn("rounded-md px-1.5 py-0.5 font-mono text-[10px]", active ? "bg-white/15" : "bg-amber-500/10 text-amber-600 dark:text-amber-400")}>
-                  {item.badge}
-                </span>
-              ) : null}
             </Link>
           );
         })}
@@ -115,7 +110,7 @@ function Sidebar({ pathname, user }: { pathname: string; user?: SessionUser }) {
         <div className="flex items-center gap-2 text-xs font-medium">
           <Sparkles className="size-3.5 text-primary" /> Today&apos;s focus
         </div>
-        <p className="mt-2 text-2xl font-semibold">38</p>
+        <p className="mt-2 text-2xl font-semibold">-</p>
         <p className="text-xs text-muted-foreground">follow-ups need attention</p>
       </div>
       <div className="scrollbar-thin flex-1 space-y-6 overflow-y-auto">
@@ -123,12 +118,12 @@ function Sidebar({ pathname, user }: { pathname: string; user?: SessionUser }) {
         {administrationItems.length ? <NavSection title="Administration" items={administrationItems} pathname={pathname} /> : null}
       </div>
       <div className="rounded-xl border bg-card p-3">
-        <p className="text-xs font-medium">June sales target</p>
+        <p className="text-xs font-medium">Sales target</p>
         <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-          <span>$84.3k</span><span>$120k</span>
+          <span>Loading...</span><span>Target</span>
         </div>
         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-          <div className="h-full w-[70%] rounded-full bg-primary" />
+          <div className="h-full w-0 rounded-full bg-primary" />
         </div>
       </div>
     </div>
@@ -140,7 +135,6 @@ export function AppShell({ children, user }: { children: React.ReactNode; user?:
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [accountOpen, setAccountOpen] = useState(false);
-  const [chatToast, setChatToast] = useState<{ name: string; body: string } | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -175,17 +169,6 @@ export function AppShell({ children, user }: { children: React.ReactNode; user?:
 
   return (
     <div className="min-h-screen bg-background">
-      {chatToast ? (
-        <button
-          type="button"
-          onClick={() => router.push("/chat")}
-          className="fixed left-1/2 top-4 z-[70] flex w-[min(92vw,360px)] -translate-x-1/2 animate-in slide-in-from-top-5 fade-in items-center gap-3 rounded-2xl border bg-card/95 p-3 text-left shadow-2xl backdrop-blur"
-        >
-          <Avatar className="size-9"><AvatarFallback className="bg-primary/15 text-primary">{initials(chatToast.name)}</AvatarFallback></Avatar>
-          <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{chatToast.name}</span><span className="block truncate text-xs text-muted-foreground">{chatToast.body}</span></span>
-          <MessageSquareText className="size-4 text-primary" />
-        </button>
-      ) : null}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r bg-sidebar/90 backdrop-blur-xl lg:block">
         <Sidebar pathname={pathname} user={user} />
       </aside>
@@ -232,10 +215,10 @@ export function AppShell({ children, user }: { children: React.ReactNode; user?:
                 aria-expanded={accountOpen}
                 onClick={() => setAccountOpen((open) => !open)}
               >
-                <Avatar className="size-7"><AvatarFallback className="bg-primary/10 text-[11px] text-primary">{initials(user?.name ?? "Demo User")}</AvatarFallback></Avatar>
+                <Avatar className="size-7"><AvatarFallback className="bg-primary/10 text-[11px] text-primary">{initials(user?.name ?? "User")}</AvatarFallback></Avatar>
                 <span className="hidden text-left sm:block">
-                  <span className="block text-xs font-medium leading-none">{user?.name ?? "Demo User"}</span>
-                  <span className="mt-1 block text-[10px] text-muted-foreground">{user?.role ? roleLabels[user.role] : "Demo Mode"}</span>
+                  <span className="block text-xs font-medium leading-none">{user?.name ?? "User"}</span>
+                  <span className="mt-1 block text-[10px] text-muted-foreground">{user?.role ? roleLabels[user.role] : ""}</span>
                 </span>
                 <ChevronDown className="hidden size-3.5 text-muted-foreground sm:block" />
               </Button>

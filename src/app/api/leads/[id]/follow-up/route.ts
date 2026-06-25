@@ -5,6 +5,7 @@ import { requireActiveUser } from "@/lib/require-user";
 import { recordAudit } from "@/lib/audit";
 import { Lead } from "@/models/lead";
 import { FollowUp } from "@/models/follow-up";
+import { leadVisibilityFilter } from "@/lib/pipeline-access";
 
 const followUpSchema = z.object({
   comment: z.string().min(1),
@@ -25,14 +26,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   try {
     const input = followUpSchema.parse(await request.json());
-    const lead = await Lead.findById(id);
+    const visibility = await leadVisibilityFilter(user);
+    const lead = await Lead.findOne({ _id: id, ...visibility });
     if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
-    if (user.role === "AGENT" && String(lead.assignedAgent) !== user.sub) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const before = { reachBackDate: lead.reachBackDate, status: lead.status };
     const terminal = !["CONNECTED", "NO_ANSWER", "VOICEMAIL", "RESCHEDULE", "CONTINUE"].includes(input.outcome);
     lead.reachBackDate = input.nextReachBackDate ?? null;
     lead.reachBackTimeZone = input.nextReachBackTimeZone;
+    lead.lastReachBackNotificationAt = null;
     if (terminal) {
       lead.status = input.outcome;
       lead.terminalAt = new Date();

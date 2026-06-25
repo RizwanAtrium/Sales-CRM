@@ -1,10 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE } from "@/lib/session";
 import { requireActiveUser } from "@/lib/require-user";
-import { etDateString } from "@/lib/et-time";
+import { etDateString, etDayRange } from "@/lib/et-time";
 import { AttendanceLog } from "@/models/attendance-log";
 import { Lead } from "@/models/lead";
 import { User } from "@/models/user";
+import { activeLeadFilter } from "@/lib/pipeline-access";
 
 function clearSessionCookie(response: NextResponse) {
   response.cookies.set(SESSION_COOKIE, "", {
@@ -29,7 +30,12 @@ export async function POST(request: NextRequest) {
   if (!reason) return NextResponse.json({ error: "Logout reason required" }, { status: 400 });
 
   if (user.role === "AGENT") {
-    const pending = await Lead.countDocuments({ assignedAgent: user.sub, reachBackDate: { $lte: new Date() }, status: { $nin: ["CLOSED_WON", "CLOSED_LOST", "APPROVED_WON", "APPROVED_LOST", "NOT_INTERESTED", "ARCHIVED"] } });
+    const today = etDayRange();
+    const pending = await Lead.countDocuments({
+      assignedAgent: user.sub,
+      reachBackDate: { $gte: today.start, $lte: today.end },
+      ...activeLeadFilter,
+    });
     if (pending) return NextResponse.json({ error: `Complete ${pending} due callbacks before logout`, pendingCallbacks: pending }, { status: 409 });
   }
 

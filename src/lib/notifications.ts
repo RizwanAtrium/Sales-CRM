@@ -84,7 +84,7 @@ export async function createMissedReachBackNotifications() {
         }),
       ),
     );
-    if (assignedId) {
+    if (assignedId && assigned && !(assigned instanceof Types.ObjectId) && assigned.role === "AGENT") {
       await User.findByIdAndUpdate(assignedId, { frozen: true, frozenAt: now, frozenReason: "Missed scheduled callback", availabilityStatus: "FROZEN" });
     }
     created += recipientIds.size;
