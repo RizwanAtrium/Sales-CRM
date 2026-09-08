@@ -5,11 +5,12 @@ import { requireActiveUser } from "@/lib/require-user";
 import { recordAudit } from "@/lib/audit";
 import { Lead } from "@/models/lead";
 import { FollowUp } from "@/models/follow-up";
-import { leadVisibilityFilter } from "@/lib/pipeline-access";
+import { activeLeadFilter, leadVisibilityFilter } from "@/lib/pipeline-access";
+import { zonedLocalToUtc } from "@/lib/timezone";
 
 const followUpSchema = z.object({
   comment: z.string().min(1),
-  nextReachBackDate: z.coerce.date().optional(),
+  nextReachBackDate: z.string().optional(),
   nextReachBackTimeZone: z.string().optional().default("America/New_York"),
   outcome: z.enum(["CONNECTED", "NO_ANSWER", "VOICEMAIL", "RESCHEDULE", "CONTINUE", "CLOSED_WON", "CLOSED_LOST", "NOT_INTERESTED"]).default("CONNECTED"),
 }).superRefine((value, context) => {
@@ -27,12 +28,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     const input = followUpSchema.parse(await request.json());
     const visibility = await leadVisibilityFilter(user);
-    const lead = await Lead.findOne({ _id: id, ...visibility });
+    const lead = await Lead.findOne({ _id: id, ...visibility, ...activeLeadFilter });
     if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
 
     const before = { reachBackDate: lead.reachBackDate, status: lead.status };
     const terminal = !["CONNECTED", "NO_ANSWER", "VOICEMAIL", "RESCHEDULE", "CONTINUE"].includes(input.outcome);
-    lead.reachBackDate = input.nextReachBackDate ?? null;
+    const nextDate = input.nextReachBackDate ? zonedLocalToUtc(input.nextReachBackDate, input.nextReachBackTimeZone) : null;
+    lead.reachBackDate = nextDate;
     lead.reachBackTimeZone = input.nextReachBackTimeZone;
     lead.lastReachBackNotificationAt = null;
     if (terminal) {
@@ -40,7 +42,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       lead.terminalAt = new Date();
     }
     await lead.save();
-    const followUp = await FollowUp.create({ lead: lead.id, actor: user.sub, comment: input.comment, previousReachBackDate: before.reachBackDate, nextReachBackDate: input.nextReachBackDate ?? null, nextReachBackTimeZone: input.nextReachBackTimeZone, outcome: input.outcome, disposition: input.outcome });
+    const followUp = await FollowUp.create({ lead: lead.id, actor: user.sub, comment: input.comment, previousReachBackDate: before.reachBackDate, nextReachBackDate: nextDate, nextReachBackTimeZone: input.nextReachBackTimeZone, outcome: input.outcome, disposition: input.outcome });
     await recordAudit({ actorId: user.sub, actorName: user.name, action: "HANDLED_FOLLOW_UP", targetType: "LEAD", targetId: lead.id, before, after: { reachBackDate: lead.reachBackDate, status: lead.status } });
     return NextResponse.json({ item: followUp, lead });
   } catch (error) {
